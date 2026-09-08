@@ -40,18 +40,22 @@ The VQ correction step removes the inherent reconstruction error of the VQ-GAN d
 
 ---
 
-## Results (CLIC dataset, 530 images, 14 ImageNet-C corruptions, severity 1–5)
+## Results
 
-| Method | PSNR (dB) | IC avg (%) | Δ IC vs Baseline |
-|---|:---:|:---:|:---:|
-| **Baseline** (original RoSteALS) | 29.09 | 94.6 | — |
-| **SmallAE-v2** | 28.77 | 96.5 | +1.9 |
-| **SmallAE-v2 + VQ correction** | 31.97 | 96.3 | +1.7 |
-| **SmallAE-v2 + VQ corr. + B0 removal** | **33.92** | **95.8** | **+1.2** |
+Evaluated on **CLIC** (530 images) and **MetFaces** (1,336 images) using 14 ImageNet-C corruptions at random severity 1–5. All variants share the same secret, same corruption IDs, and same severity draws per image.
 
 IC avg = mean bit accuracy (%) across 14 corruption types after attack.
 
-### Per-attack robustness (CLIC, %)
+### Summary
+
+| Method | CLIC PSNR | CLIC IC avg | MetFaces PSNR | MetFaces IC avg |
+|---|:---:|:---:|:---:|:---:|
+| **Baseline** (original RoSteALS) | 29.09 | 94.6 | 33.24 | 94.2 |
+| **SmallAE-v2** | 28.77 | 96.5 | — | — |
+| **SmallAE-v2 + VQ correction** | 31.97 | 96.3 | 34.76 | 96.4 |
+| **SmallAE-v2 + VQ corr. + B0 removal** | **33.92** | **95.8** | **36.06** | **96.0** |
+
+### Per-attack robustness — CLIC (530 images, %)
 
 | Attack | Baseline | v2 + VQ | v2 + VQ + B0 |
 |---|:---:|:---:|:---:|
@@ -70,6 +74,26 @@ IC avg = mean bit accuracy (%) across 14 corruption types after attack.
 | Spatter | 98.2 | 98.8 | 98.6 |
 | Saturate | 98.8 | 98.9 | 98.5 |
 | **IC avg** | **94.6** | **96.3** | **95.8** |
+
+### Per-attack robustness — MetFaces (1,336 images, %)
+
+| Attack | Baseline | v2 + VQ | v2 + VQ + B0 |
+|---|:---:|:---:|:---:|
+| Gaussian noise | 84.1 | 89.1 | 87.9 |
+| Shot noise | 86.5 | 91.1 | 90.0 |
+| Impulse noise | 88.3 | 92.6 | 91.8 |
+| Defocus blur | 96.6 | 97.6 | 97.6 |
+| Frost | 92.5 | 97.5 | 96.9 |
+| Fog | 97.7 | 99.2 | 98.9 |
+| Brightness | 99.5 | 99.6 | 99.5 |
+| Contrast | 98.1 | 99.2 | 98.9 |
+| Pixelate | 99.5 | 99.6 | 99.5 |
+| JPEG compression | 88.1 | 92.3 | 91.1 |
+| Speckle noise | 91.9 | 95.0 | 94.2 |
+| Gaussian blur | 98.4 | 99.0 | 98.9 |
+| Spatter | 98.3 | 99.2 | 99.0 |
+| Saturate | 99.1 | 99.4 | 99.1 |
+| **IC avg** | **94.2** | **96.4** | **96.0** |
 
 ### Visual comparison (Image 00 — 0067.png from CLIC)
 
