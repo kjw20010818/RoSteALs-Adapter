@@ -11,8 +11,10 @@ models/first_stage_models/
 *.pt
 *.pth
 
-# Experiment outputs
-results/
+# Experiment outputs (raw data excluded, but demo images kept)
+results/*.json
+results/*.csv
+results/*.log
 /hdd/
 
 # Logs
