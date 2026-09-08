@@ -1,0 +1,30 @@
+# Core
+torch>=1.11.0
+torchvision>=0.12.0
+numpy>=1.21.0
+Pillow>=9.0.0
+tqdm>=4.64.0
+omegaconf>=2.1.1
+einops>=0.3.0
+
+# Image / signal processing
+kornia>=0.6.0
+opencv-python>=4.1.2
+albumentations==0.4.3
+scikit-image>=0.19.0
+scipy>=1.8.0
+imagenet-c>=0.0.2
+
+# Watermarking / ECC
+bchlib==0.14.0
+
+# Metrics
+lpips>=0.1.4
+matplotlib>=3.4.0
+
+# Deep learning utilities
+pytorch-lightning>=1.4.0,<1.9.0
+transformers>=4.0.0
+
+# Misc
+requests>=2.25.0

@@ -1,0 +1,29 @@
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+
+# Model weights (download separately)
+models/RoSteALS/
+models/first_stage_models/
+*.ckpt
+*.pt
+*.pth
+
+# Experiment outputs
+results/
+/hdd/
+
+# Logs
+*.log
+lightning_logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db

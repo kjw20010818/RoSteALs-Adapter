@@ -1,0 +1,159 @@
+# Small AE (Autoencoder) Post-G Adapter for RoSteALS
+#
+# Post-G CNN 어댑터와의 결정적 차이:
+#   CNN adapter : 로컬 수용장 (3×3 conv, 국소 정보만 활용)
+#   SmallAE     : 공간 압축(H→H/2) 후 전역 복원 → 이미지 전체 맥락에서 워터마크 배치
+#
+# 아키텍처:
+#   image_wm [3, 256, 256]
+#     → Encoder (3→32→64ch, 256→128)   [n_down=1]
+#     → FiLM(s) @ 128×128 bottleneck
+#     → Decoder (64→32ch, 128→256) + FiLM(s)
+#     → delta (zero-init)
+#   image_out = clamp(image_wm + exp(log_alpha) * delta)
+#
+# 파라미터: ~400K (JpegDCT ~1.5M 보다 경량, DecG 128K 보다 표현력↑)
+#
+# Usage:
+#   python scripts/train_post_g_adapter.py \
+#       --config models/VQ4_small_ae_adapter.yaml \
+#       --pretrain_ckpt /workspace/RoSteALS-main/models/RoSteALS/epoch=000017-step=000449999.ckpt \
+#       --output /hdd/watermark/model/small_ae_v2 \
+#       --gpus 2 --batch_size 4
+
+model:
+  target: cldm.post_g_adapter.ControlAEPostG
+  params:
+    first_stage_key: image
+    control_key: secret
+    scale_factor: 1.0
+
+    # ── 어댑터 종류 ───────────────────────────────────────────────────
+    adapter_type: small_ae
+
+    # ── SmallAEAdapter 설정 ──────────────────────────────────────────
+    adapter_hidden: 32          # base_ch (첫 인코더 채널 수)
+    adapter_n_blocks: 2         # 각 단계 ResBlock 수
+    adapter_cond_dim: 128       # secret 조건 벡터 차원
+    adapter_n_down: 1           # 다운샘플 횟수 (1 → 128×128 bottleneck)
+    adapter_smooth_delta: true  # delta Gaussian 스무딩 (블록 아티팩트 제거)
+    adapter_smooth_sigma: 1.0   # Gaussian sigma
+
+    # ── Loss weights ─────────────────────────────────────────────────
+    lambda_preserve: 3.0        # image_wm 분포 유지 (CNN adapter와 동일)
+    lambda_img: 0.1
+    lambda_lpips: 1.0
+    attack_prob: 0.9
+
+    # ── D joint fine-tune (초기: frozen) ─────────────────────────────
+    finetune_decoder: false
+
+    # ── Pretrained checkpoint ─────────────────────────────────────────
+    pretrain_ckpt: /workspace/RoSteALS-main/models/RoSteALS/epoch=000017-step=000449999.ckpt
+
+    # ── Sub-model configs ─────────────────────────────────────────────
+    first_stage_config:
+      target: ldm.models.autoencoder.VQModelInterface
+      params:
+        ckpt_path: /workspace/RoSteALS-main/models/first_stage_models/vq-f4/model.ckpt
+        embed_dim: 3
+        n_embed: 8192
+        ddconfig:
+          double_z: false
+          z_channels: 3
+          resolution: 256
+          in_channels: 3
+          out_ch: 3
+          ch: 128
+          ch_mult: [1, 2, 4]
+          num_res_blocks: 2
+          attn_resolutions: []
+          dropout: 0.0
+        lossconfig:
+          target: torch.nn.Identity
+
+    decoder_config:
+      target: cldm.diffsteg.SecretDecoder
+      params:
+        arch: resnet50
+        secret_len: 100
+
+    control_config:
+      target: cldm.ae.SecretEncoder3
+      params:
+        secret_len: 100
+        resolution: 64
+        base_res: 32
+
+    loss_config:
+      target: cldm.loss.ImageSecretLoss
+      params:
+        recon_type: yuv
+        recon_weight: 3.0
+        perceptual_weight: 0.1
+        secret_weight: 5.0
+        kl_weight: 0.0
+        max_image_weight_ratio: 1.0
+
+    noise_config:
+      target: cldm.transformations.TransformNet
+      params:
+        do_jpeg: false
+        rnd_bri: 0.0
+        rnd_hue: 0.0
+        rnd_noise: 0.0
+        rnd_sat: 0.0
+        rnd_trans: 0.0
+        contrast: [1.0, 1.0]
+        ramp: 5000
+        imagenetc_level: 5
+
+data:
+  target: tools.imgcap_dataset.DataModuleFromConfig
+  params:
+    batch_size: 4
+    num_workers: 4
+    wrap: false
+    use_worker_init_fn: true
+    train:
+      target: tools.image_dataset.ImageFolder
+      params:
+        data_dir: /hdd/watermark/dataset/images
+        data_list: prep_data/mir_train_local.csv
+        resize: 256
+        secret_len: 100
+    validation:
+      target: tools.image_dataset.ImageFolder
+      params:
+        data_dir: /hdd/watermark/dataset/images
+        data_list: prep_data/mir_val_local.csv
+        resize: 256
+        secret_len: 100
+
+lightning:
+  callbacks:
+    image_logger:
+      target: cldm.logger.ImageLogger
+      params:
+        batch_frequency: 2000
+        max_images: 4
+        increase_log_steps: false
+        fixed_input: true
+    progress_bar:
+      target: pytorch_lightning.callbacks.TQDMProgressBar
+      params:
+        refresh_rate: 50
+    checkpoint:
+      target: pytorch_lightning.callbacks.ModelCheckpoint
+      params:
+        verbose: true
+        filename: '{epoch:06}-{step:09}'
+        every_n_train_steps: 5000
+        every_n_epochs: 0
+  trainer:
+    benchmark: true
+    base_learning_rate: 1.0e-04
+    accumulate_grad_batches: 1
+    gradient_clip_val: 1.0
+    log_every_n_steps: 50
+    max_epochs: 3
