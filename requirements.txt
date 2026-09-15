@@ -1,39 +1,25 @@
-# RoSteALS-Adapter — 현재 실험 환경과 동일한 버전
-# torch / torchvision 은 Dockerfile에서 CUDA wheel로 설치한다.
+# Docker / 학습용 의존성
+# torch, torchvision 은 Dockerfile에서 CUDA wheel로 설치한다.
+# numpy 는 PyTorch 이미지(conda) 것을 그대로 쓴다.
 
-# Core
 pytorch-lightning==2.4.0
 omegaconf==2.3.1
 einops==0.8.2
-numpy
 pandas
 six
-
-# Image / attacks
-# imagenet-c 0.0.3 metadata는 opencv-python~=3.4 를 요구하지만
-# Python 3.10에서 그 버전은 빌드가 깨지므로 Dockerfile에서 --no-deps 로 설치한다.
 Pillow
 kornia==0.8.2
-scipy==1.15.3
+scipy
 scikit-image
 opencv-python==4.8.1.78
 Wand
 lpips==0.1.4
-
-# HuggingFace (FLUX.1 / Qwen VAE)
 diffusers==0.40.0
 transformers==5.13.0
 accelerate==1.14.0
 huggingface-hub==1.28.0
 safetensors
-
-# VQ-GAN (ldm.models.autoencoder.VQModelInterface)
 taming-transformers-rom1504
-
-# Watermark (C 확장 — Dockerfile에 build-essential 필요)
-bchlib==0.14.0
-
-# Misc
 tqdm
 regex
 filelock
