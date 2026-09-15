@@ -10,13 +10,14 @@ pandas
 six
 
 # Image / attacks
+# imagenet-c 0.0.3 metadata는 opencv-python~=3.4 를 요구하지만
+# Python 3.10에서 그 버전은 빌드가 깨지므로 Dockerfile에서 --no-deps 로 설치한다.
 Pillow
 kornia==0.8.2
 scipy==1.15.3
 scikit-image
-opencv-python-headless
+opencv-python==4.8.1.78
 Wand
-imagenet-c==0.0.3
 lpips==0.1.4
 
 # HuggingFace (FLUX.1 / Qwen VAE)
@@ -29,7 +30,7 @@ safetensors
 # VQ-GAN (ldm.models.autoencoder.VQModelInterface)
 taming-transformers-rom1504
 
-# Watermark
+# Watermark (C 확장 — Dockerfile에 build-essential 필요)
 bchlib==0.14.0
 
 # Misc

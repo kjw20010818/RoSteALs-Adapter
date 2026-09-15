@@ -25,7 +25,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         git wget curl unzip \
-        libgl1-mesa-glx libglib2.0-0 libsm6 libxext6 libxrender1 \
+        build-essential \
+        libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 \
         imagemagick libmagickwand-dev \
     && rm -rf /var/lib/apt/lists/*
 
@@ -38,7 +39,10 @@ RUN pip install --no-cache-dir -U pip && \
         --index-url https://download.pytorch.org/whl/cu121
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# imagenet-c==0.0.3 은 opencv-python~=3.4 를 요구해서 py3.10에서 소스 빌드가 실패한다.
+# 로컬 실험과 같이 OpenCV 4.8 + imagenet-c(--no-deps) 조합을 쓴다.
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir --no-deps imagenet-c==0.0.3
 
 COPY cldm/      cldm/
 COPY ldm/       ldm/
