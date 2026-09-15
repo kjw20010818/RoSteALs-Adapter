@@ -1,0 +1,107 @@
+# FLUX.1 VAE Backbone Training — 512x512
+#
+# VQ-GAN f=4 (256x256) → latent 64x64 (3ch)
+# FLUX   f=8 (512x512) → latent 64x64 (16ch)  ← 동일한 공간 해상도
+#
+# 이전 256x256 학습과 다른 점:
+#   - resize: 512 (짧은 변 기준, CenterCrop으로 정방형)
+#   - SecretEncoder4: resolution=64, base_res=16 (16→64 upsample)
+#   - batch_size: 2 (512x512 → 4배 메모리)
+#   - max_epochs: 12
+
+model:
+  target: cldm.ae.ControlAE
+  params:
+    first_stage_key: "image"
+    control_key: "secret"
+    scale_factor: 1.0
+
+    first_stage_config:
+      target: cldm.vae_backbones.FluxVAEInterface
+      params:
+        sample_posterior: false
+
+    decoder_config:
+      target: cldm.diffsteg.SecretDecoder
+      params:
+        arch: resnet50
+        secret_len: 64
+
+    control_config:
+      target: cldm.ae.SecretEncoder4
+      params:
+        secret_len: 64
+        ch: 16
+        base_res: 16      # 16→64 upsample (4×)
+        resolution: 64    # 512 / f=8 = 64
+
+    loss_config:
+      target: cldm.loss.ImageSecretLoss
+      params:
+        recon_type: yuv
+        recon_weight: 1.5
+        perceptual_weight: 1.0
+        secret_weight: 10.0
+        kl_weight: 0.0
+        max_image_weight_ratio: 10.0
+
+    noise_config:
+      target: cldm.transformations.TransformNet
+      params:
+        do_jpeg: true
+        ramp: 10000
+        imagenetc_level: 5
+
+data:
+  target: tools.imgcap_dataset.DataModuleFromConfig
+  params:
+    batch_size: 2
+    num_workers: 4
+    wrap: false
+    use_worker_init_fn: true
+    train:
+      target: tools.image_dataset.ImageFolder
+      params:
+        data_dir: /hdd/watermark/dataset/images
+        data_list: prep_data/mir_train_local.csv
+        resize: 512
+        transform_mode: resize
+        secret_len: 64
+    validation:
+      target: tools.image_dataset.ImageFolder
+      params:
+        data_dir: /hdd/watermark/dataset/images
+        data_list: prep_data/mir_val_local.csv
+        resize: 512
+        transform_mode: resize
+        secret_len: 64
+
+lightning:
+  callbacks:
+    image_logger:
+      target: cldm.logger.ImageLogger
+      params:
+        batch_frequency: 5000
+        max_images: 4
+        increase_log_steps: false
+        fixed_input: true
+    progress_bar:
+      target: pytorch_lightning.callbacks.TQDMProgressBar
+      params:
+        refresh_rate: 100
+    checkpoint:
+      target: pytorch_lightning.callbacks.ModelCheckpoint
+      params:
+        verbose: true
+        filename: '{epoch:06}-{step:09}'
+        every_n_train_steps: 12500
+        every_n_epochs: 0
+        save_last: true
+
+  trainer:
+    benchmark: true
+    base_learning_rate: 4.0e-5   # 원 논문 lr(1.6e-4) = 4e-5 × 2GPU × 2batch
+    accumulate_grad_batches: 1
+    gradient_clip_val: 1.0
+    log_every_n_steps: 50
+    max_epochs: 12

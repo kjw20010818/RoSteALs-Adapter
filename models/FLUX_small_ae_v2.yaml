@@ -1,0 +1,83 @@
+model:
+  target: cldm.post_g_adapter.ControlAEPostG
+  params:
+    first_stage_key: image
+    control_key: secret
+    scale_factor: 1.0
+    adapter_type: small_ae
+    adapter_hidden: 32
+    adapter_n_blocks: 2
+    adapter_cond_dim: 128
+    adapter_n_down: 1
+    adapter_smooth_delta: true
+    adapter_smooth_sigma: 1.0
+    lambda_preserve: 3.0
+    lambda_img: 0.1
+    lambda_lpips: 1.0
+    attack_prob: 0.9
+    finetune_decoder: false
+    pretrain_ckpt: /hdd/watermark/model/rosteals_flux/checkpoints/epoch=000012-step=000150000.ckpt
+
+    first_stage_config:
+      target: cldm.vae_backbones.FluxVAEInterface
+      params:
+        sample_posterior: false
+
+    decoder_config:
+      target: cldm.diffsteg.SecretDecoder
+      params:
+        arch: resnet50
+        secret_len: 100
+
+    control_config:
+      target: cldm.ae.SecretEncoder4
+      params:
+        secret_len: 100
+        ch: 16
+        base_res: 32
+        resolution: 32
+
+    loss_config:
+      target: cldm.loss.ImageSecretLoss
+      params:
+        recon_type: yuv
+        recon_weight: 3.0
+        perceptual_weight: 0.1
+        secret_weight: 5.0
+        kl_weight: 0.0
+        max_image_weight_ratio: 1.0
+
+    noise_config:
+      target: cldm.transformations.TransformNet
+      params:
+        do_jpeg: false
+        rnd_bri: 0.0
+        rnd_hue: 0.0
+        rnd_noise: 0.0
+        rnd_sat: 0.0
+        rnd_trans: 0.0
+        contrast: [1.0, 1.0]
+        ramp: 5000
+        imagenetc_level: 5
+
+data:
+  target: tools.imgcap_dataset.DataModuleFromConfig
+  params:
+    batch_size: 4
+    num_workers: 4
+    wrap: false
+    use_worker_init_fn: true
+    train:
+      target: tools.image_dataset.ImageFolder
+      params:
+        data_dir: /hdd/watermark/dataset/images
+        data_list: prep_data/mir_train_local.csv
+        resize: 256
+        secret_len: 100
+    validation:
+      target: tools.image_dataset.ImageFolder
+      params:
+        data_dir: /hdd/watermark/dataset/images
+        data_list: prep_data/mir_val_local.csv
+        resize: 256
+        secret_len: 100

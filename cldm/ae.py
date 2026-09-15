@@ -419,13 +419,6 @@ class ControlAE(pl.LightningModule):
                  lambda_base=1.0,
                  lambda_base_perc=0.1,
                  lambda_logit=0.01,
-                 # ── Latent-space content-adaptive JND ────────────
-                 latent_jnd: bool = False,
-                 latent_jnd_ksize: int = 11,
-                 latent_jnd_sharpness: float = 10.0,
-                 latent_jnd_min: float = 0.2,
-                 # ── Fine-tune from checkpoint ─────────────────────
-                 pretrain_ckpt: str = '__none__',
                  ):
         super().__init__()
         self.scale_factor = scale_factor
@@ -498,27 +491,6 @@ class ControlAE(pl.LightningModule):
             # F도 eval() 모드 → BN statistics 고정
             self.control.eval()
             print("[Init] freeze_F=True: F (control) is frozen (eval mode). D (decoder) will be trained.")
-
-        # ── Latent-space content-adaptive JND ────────────────────────────────
-        self.latent_jnd          = latent_jnd
-        self.latent_jnd_ksize    = latent_jnd_ksize
-        self.latent_jnd_sharpness = latent_jnd_sharpness
-        self.latent_jnd_min      = latent_jnd_min
-        if latent_jnd:
-            print(f"[LatentJND] enabled  ksize={latent_jnd_ksize}  "
-                  f"sharpness={latent_jnd_sharpness}  min={latent_jnd_min}")
-
-        # ── Baseline checkpoint 로드 (fine-tune용) ────────────────────────────
-        if pretrain_ckpt and pretrain_ckpt != '__none__':
-            import os
-            if os.path.exists(pretrain_ckpt):
-                sd = safe_torch_load(pretrain_ckpt, map_location='cpu')
-                state = sd.get('state_dict', sd)
-                miss, unexp = self.load_state_dict(state, strict=False)
-                print(f"[PretrainCkpt] Loaded {pretrain_ckpt}")
-                print(f"  missing={len(miss)}  unexpected={len(unexp)}")
-            else:
-                print(f"[PretrainCkpt] WARNING: not found → {pretrain_ckpt}")
 
         # early training phase
         # self.fixed_input = True
@@ -673,48 +645,11 @@ class ControlAE(pl.LightningModule):
         yuv_loss = 1.5*torch.mm(yuv_loss, self.yuv_scales).squeeze(1)
         return lpips_loss + yuv_loss
 
-    def _latent_jnd_mask(self, image: torch.Tensor) -> torch.Tensor:
-        """
-        이미지 픽셀 공간(256×256)에서 local variance(텍스처 강도)를 계산하고
-        latent 해상도(64×64)로 다운샘플해 content-adaptive 가중치 맵을 반환.
-
-        반환값: [B, 1, 64, 64], 텍스처 강할수록 크고 평탄할수록 latent_jnd_min에 가까움.
-        에너지 보존을 위해 배치별 평균이 1.0이 되도록 정규화.
-        """
-        k = self.latent_jnd_ksize
-        p = k // 2
-        # 그레이스케일로 변환 후 국소 분산 계산
-        gray = image.mean(dim=1, keepdim=True)          # [B,1,H,W]
-        gray_pad = torch.nn.functional.pad(gray, (p, p, p, p), mode='reflect')
-        mean_l = torch.nn.functional.avg_pool2d(gray_pad, k, stride=1)
-        sq_l   = torch.nn.functional.avg_pool2d(gray_pad**2, k, stride=1)
-        var    = (sq_l - mean_l**2).clamp(min=0)        # [B,1,H,W]
-
-        # sigmoid → [0,1], 평탄=0, 텍스처=1 방향
-        mask_img = torch.sigmoid(self.latent_jnd_sharpness * var)  # [B,1,256,256]
-
-        # latent 해상도로 다운샘플 (64×64)
-        mask_lat = torch.nn.functional.interpolate(
-            mask_img, size=(64, 64), mode='bilinear', align_corners=False)
-
-        # 최솟값 floor → 평탄 영역도 최소 latent_jnd_min만큼은 신호 유지
-        mask_lat = mask_lat.clamp(min=self.latent_jnd_min)
-
-        # 배치별 에너지 정규화: 평균이 1.0 → 총 워터마크 에너지 보존
-        norm = mask_lat.mean(dim=[1, 2, 3], keepdim=True).clamp(min=1e-6)
-        mask_lat = mask_lat / norm                       # [B,1,64,64]
-        return mask_lat
-
     def forward(self, x, image, c):
         if self.control.__class__.__name__ == 'SecretEncoder6':
             eps, posterior = self.control(x, c)
         else:
             eps, posterior = self.control(image, c)
-
-        # ── Latent-space content-adaptive JND: 텍스처 영역에 신호 집중 ──────
-        if self.latent_jnd and image is not None:
-            jnd_mask = self._latent_jnd_mask(image)     # [B,1,64,64]
-            eps = eps * jnd_mask                        # 채널 broadcast
 
         if self.adapter is not None and not isinstance(self.adapter, LoRADecoderAdapter):
             if self._is_gated_adapter:

@@ -17,7 +17,7 @@ except (ImportError, Exception):
 
 
 class TransformNet(nn.Module):
-    def __init__(self, rnd_bri=0.3, rnd_hue=0.1, do_jpeg=False, jpeg_quality=50, rnd_noise=0.02, rnd_sat=1.0, rnd_trans=0.1,contrast=[0.5, 1.5], ramp=1000, imagenetc_level=0, corrupt_weights=None) -> None:
+    def __init__(self, rnd_bri=0.3, rnd_hue=0.1, do_jpeg=False, jpeg_quality=50, rnd_noise=0.02, rnd_sat=1.0, rnd_trans=0.1,contrast=[0.5, 1.5], ramp=1000, imagenetc_level=0) -> None:
         super().__init__()
         self.rnd_bri = rnd_bri
         self.rnd_hue = rnd_hue
@@ -30,8 +30,7 @@ class TransformNet(nn.Module):
         self.ramp = ramp
         self.register_buffer('step0', torch.tensor(0))  # large number
         if imagenetc_level > 0 and _IMAGENETC_AVAILABLE:
-            self.imagenetc = ImagenetCTransform(max_severity=imagenetc_level,
-                                                corrupt_weights=corrupt_weights)
+            self.imagenetc = ImagenetCTransform(max_severity=imagenetc_level)
         elif imagenetc_level > 0:
             print('[TransformNet] imagenet_c not available, skipping ImageNet-C augmentation')
     
@@ -100,53 +99,20 @@ class TransformNet(nn.Module):
 
 
 class ImagenetCTransform(nn.Module):
-    # corruption_dict index → name (from imagenet_c)
-    _CORRUPT_NAMES = [
-        'gaussian_noise','shot_noise','impulse_noise','defocus_blur','glass_blur',
-        'motion_blur','zoom_blur','snow','frost','fog','brightness','contrast',
-        'elastic_transform','pixelate','jpeg_compression','speckle_noise',
-        'gaussian_blur','spatter','saturate',
-    ]
-
-    def __init__(self, max_severity=5, corrupt_weights=None) -> None:
-        """
-        corrupt_weights: dict {corruption_name: weight} for biased sampling.
-          e.g. {'pixelate': 4.0, 'defocus_blur': 3.0, 'frost': 3.0}
-          Omitted corruptions get weight 1.0.
-        """
+    def __init__(self, max_severity=5) -> None:
         super().__init__()
         self.max_severity = max_severity
         self.tform = RandomImagenetC(max_severity=max_severity, phase='train')
-        # Build sampling weight array aligned to tform.corrupt_ids
-        if corrupt_weights:
-            ids   = self.tform.corrupt_ids          # array of valid train indices
-            wts   = np.ones(len(ids), dtype=np.float64)
-            for name, w in corrupt_weights.items():
-                if name in self._CORRUPT_NAMES:
-                    idx = self._CORRUPT_NAMES.index(name)
-                    hit = np.where(ids == idx)[0]
-                    if len(hit):
-                        wts[hit[0]] = float(w)
-            self._sample_weights = wts / wts.sum()
-        else:
-            self._sample_weights = None
-
-    def _sample_corrupt_id(self):
-        ids = self.tform.corrupt_ids
-        if self._sample_weights is not None:
-            return int(np.random.choice(ids, p=self._sample_weights))
-        return int(np.random.choice(ids))
-
+    
     def forward(self, x):
         # x: [batch_size, 3, H, W] in range [-1, 1]
         img0 = x.detach().cpu().numpy()
         img = img0 * 127.5 + 127.5  # [-1, 1] -> [0, 255]
         img = img.transpose(0, 2, 3, 1).astype(np.uint8)
         img = [Image.fromarray(i) for i in img]
-        # per-sample biased corrupt_id
-        img = [self.tform(im, corrupt_id=self._sample_corrupt_id()) for im in img]
+        img = [self.tform(i) for i in img]
         img = np.array([np.array(i) for i in img], dtype=np.float32)
         img = img.transpose(0, 3, 1, 2) / 127.5 - 1.  # [0, 255] -> [-1, 1]
         residual = torch.from_numpy(img - img0).to(x.device)
         x = (x + residual).clamp(-1, 1)   # BN NaN 방지
-        return x
+        return x 
