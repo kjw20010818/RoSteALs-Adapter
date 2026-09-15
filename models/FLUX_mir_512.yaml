@@ -3,11 +3,13 @@
 # VQ-GAN f=4 (256x256) → latent 64x64 (3ch)
 # FLUX   f=8 (512x512) → latent 64x64 (16ch)  ← 동일한 공간 해상도
 #
-# 이전 256x256 학습과 다른 점:
-#   - resize: 512 (짧은 변 기준, CenterCrop으로 정방형)
+# 원 논문 KL-f8 설정 재현:
+#   - resize: 512 (단순 Resize, 비율 무시)
+#   - secret_len: 64
 #   - SecretEncoder4: resolution=64, base_res=16 (16→64 upsample)
 #   - batch_size: 2 (512x512 → 4배 메모리)
 #   - max_epochs: 12
+# 데이터 경로: DATA_DIR 환경변수 (기본 /data). 로컬은 DATA_DIR=/hdd/watermark/dataset/images
 
 model:
   target: cldm.ae.ControlAE
@@ -62,7 +64,7 @@ data:
     train:
       target: tools.image_dataset.ImageFolder
       params:
-        data_dir: /hdd/watermark/dataset/images
+        data_dir: ${oc.env:DATA_DIR,/data}
         data_list: prep_data/mir_train_local.csv
         resize: 512
         transform_mode: resize
@@ -70,7 +72,7 @@ data:
     validation:
       target: tools.image_dataset.ImageFolder
       params:
-        data_dir: /hdd/watermark/dataset/images
+        data_dir: ${oc.env:DATA_DIR,/data}
         data_list: prep_data/mir_val_local.csv
         resize: 512
         transform_mode: resize

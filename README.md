@@ -1,8 +1,8 @@
 # RoSteALS + SmallAE-v2 Adapter
 
-![Python 3.8](https://img.shields.io/badge/Python-3.8-green)
-![PyTorch 1.11](https://img.shields.io/badge/PyTorch-1.11-orange)
-![CUDA 11.3](https://img.shields.io/badge/CUDA-11.3-blue)
+![Python 3.10](https://img.shields.io/badge/Python-3.10-green)
+![PyTorch 2.5.1](https://img.shields.io/badge/PyTorch-2.5.1-orange)
+![CUDA 12.1](https://img.shields.io/badge/CUDA-12.1-blue)
 ![License CC BY-NC-SA 4.0](https://img.shields.io/badge/license-CC--BY--NC--SA--4.0-blueviolet)
 
 Post-G adapter for [RoSteALS](https://arxiv.org/abs/2304.03400) that improves image quality while maintaining or exceeding robustness on all 14 ImageNet-C corruptions.
@@ -37,6 +37,89 @@ Watermarked image W'  (PSNR ≈ 34 dB)
 ```
 
 The VQ correction step removes the inherent reconstruction error of the VQ-GAN decoder, boosting PSNR by ~3 dB with negligible impact on robustness.
+
+---
+
+## Docker (recommended)
+
+The image matches the current experiment stack: **PyTorch 2.5.1 + CUDA 12.1 + Lightning 2.4.0 + diffusers 0.40.0**. Weights and datasets are **not** baked in; mount them at `/weights` and `/data`.
+
+### Host layout
+
+```
+/data/                          # MIR-Flickr images (0.jpg … or 0/0.jpg …)
+/data/clic/                     # optional, evaluation
+/data/metfaces/                 # optional, evaluation
+/weights/vq-f4/model.ckpt
+/weights/rosteals/epoch=000017-step=000449999.ckpt
+/weights/flux_512/              # FLUX backbone training output
+```
+
+Download VQ-GAN / RoSteALS weights with `bash download_models.sh` and copy them into `/weights/...` as above. FLUX.1 VAE is pulled from Hugging Face at runtime (`black-forest-labs/FLUX.1-schnell`, fallback `FLUX.1-dev`). For gated models, pass `HF_TOKEN`.
+
+### Build
+
+```bash
+git clone https://github.com/kjw20010818/RoSteALs-Adapter.git
+cd RoSteALs-Adapter
+cp .env.example .env            # edit DATA_DIR, WEIGHT_DIR, HF_TOKEN
+docker compose build
+```
+
+Or without compose:
+
+```bash
+docker build -t rosteals-adapter:latest .
+```
+
+### Run — FLUX.1 backbone (512×512, 64-bit, plain Resize)
+
+```bash
+docker run --gpus all --rm -it \
+  -e HF_TOKEN=$HF_TOKEN \
+  -e DATA_DIR=/data \
+  -v /path/to/mirflickr:/data \
+  -v /path/to/checkpoints:/weights \
+  -v ~/.cache/huggingface:/root/.cache/huggingface \
+  rosteals-adapter:latest \
+  python train.py \
+    --config models/FLUX_mir_512.yaml \
+    --secret_len 64 \
+    --max_image_weight_ratio 10 \
+    --batch_size 2 \
+    --gpus 2 \
+    --data_dir /data \
+    -o /weights/flux_512
+```
+
+### Run — SmallAE-v2 adapter on VQ-GAN
+
+```bash
+docker run --gpus all --rm -it \
+  -e DATA_DIR=/data \
+  -v /path/to/mirflickr:/data \
+  -v /path/to/checkpoints:/weights \
+  rosteals-adapter:latest \
+  python train.py \
+    --config models/VQ4_small_ae_v2.yaml \
+    --secret_len 100 \
+    --batch_size 4 \
+    --gpus 1 \
+    --data_dir /data \
+    --pretrain_ckpt /weights/rosteals/epoch=000017-step=000449999.ckpt \
+    -o /weights/small_ae_v2
+```
+
+### Compose shortcuts
+
+```bash
+docker compose run --rm train-flux
+docker compose run --rm train-adapter
+docker compose run --rm eval-vqgan
+docker compose run --rm shell
+```
+
+NVIDIA Container Toolkit must be installed on the host (`nvidia-smi` inside the container should work).
 
 ---
 
@@ -221,15 +304,16 @@ python inference.py \
 ## Train Your Own Adapter
 
 ```bash
-python scripts/train_post_g_adapter.py \
+python train.py \
     --config models/VQ4_small_ae_v2.yaml \
     --pretrain_ckpt models/RoSteALS/epoch=000017-step=000449999.ckpt \
+    --data_dir /path/to/mirflickr_images \
     --output /path/to/output \
     --gpus 1 \
     --batch_size 4
 ```
 
-**Data**: MIR-Flickr 100k ([download first tar](https://press.liacs.nl/mirflickr/mirflickr1m.v3b/images0.zip)). Update `data.params.train.params.data_root` in the YAML.
+**Data**: MIR-Flickr 100k ([download first tar](https://press.liacs.nl/mirflickr/mirflickr1m.v3b/images0.zip)). Set `DATA_DIR` or pass `--data_dir`. Lists are in `prep_data/mir_train_local.csv` and `prep_data/mir_val_local.csv`.
 
 **Key hyperparameters in `VQ4_small_ae_v2.yaml`**:
 
@@ -289,15 +373,12 @@ W' = (x_orig + wm_clean).clamp(-1, 1)
 Run the full controlled evaluation (CLIC + MetFaces, all 14 ImageNet-C corruptions):
 
 ```bash
-python scripts/eval_b0_removal.py
-# Output: results/eval_b0_removal.json
-```
-
-Or the minimal v2 vs VQ correction comparison:
-
-```bash
-python scripts/eval_vq_correction_fixed.py
-# Output: results/eval_vq_correction_fixed.json
+python scripts/evaluate.py \
+    --config models/VQ4_small_ae_v2.yaml \
+    --ckpt /path/to/small_ae_v2.ckpt \
+    --clic /path/to/clic \
+    --metfaces /path/to/metfaces \
+    --out results/eval.json
 ```
 
 ---
@@ -306,23 +387,24 @@ python scripts/eval_vq_correction_fixed.py
 
 ```
 RoSteALs-Adapter/
+├── Dockerfile              # PyTorch 2.5.1 + CUDA 12.1
+├── docker-compose.yml
+├── requirements.txt
+├── train.py                # Lightning 2.x trainer (FLUX / adapter)
 ├── cldm/
-│   ├── post_g_adapter.py   # SmallAE adapter, ControlAEPostG training class
-│   ├── diffsteg.py         # SecretEncoder / SecretDecoder architectures
-│   ├── ae.py               # VQ-GAN utilities
+│   ├── post_g_adapter.py
+│   ├── vae_backbones.py    # FluxVAEInterface / QwenImageVAEInterface
+│   ├── ae.py
 │   └── ...
-├── ldm/                    # Latent diffusion model utilities (from CompVis)
-├── tools/
-│   ├── ecc.py              # BCH error correction (text ↔ 100-bit)
-│   ├── augment_imagenetc.py # ImageNet-C corruption wrapper
-│   └── eval_metrics.py     # PSNR / SSIM / LPIPS / SIFID
 ├── models/
-│   └── VQ4_small_ae_v2.yaml  # Main config
-├── inference.py            # Original RoSteALS inference
-├── inference_v2.py         # SmallAE-v2 + VQ correction inference
-├── download_models.sh      # Download base model weights
-├── Dockerfile
-└── requirements.txt
+│   ├── FLUX_mir_512.yaml   # FLUX f=8, 512², L=64
+│   ├── FLUX_small_ae_v2.yaml
+│   └── VQ4_small_ae_v2.yaml
+├── scripts/
+│   ├── evaluate.py
+│   └── evaluate_flux.py
+├── prep_data/              # MIR-Flickr train/val lists
+└── tools/
 ```
 
 ---

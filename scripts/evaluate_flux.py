@@ -91,11 +91,10 @@ def load_flux_model(backbone_ckpt, adapter_ckpt, device):
     return model
 
 
-def load_vq_model(vq_adapter_ckpt, device):
+def load_vq_model(vq_adapter_ckpt, device, vq_baseline_ckpt):
     cfg   = OmegaConf.load('models/VQ4_small_ae_v2.yaml')
     model = ControlAEPostG(**cfg.model.params).to(device).eval()
-    sd = torch.load('models/RoSteALS/epoch=000017-step=000449999.ckpt',
-                    map_location='cpu', weights_only=False)
+    sd = torch.load(vq_baseline_ckpt, map_location='cpu', weights_only=False)
     model.load_state_dict(sd.get('state_dict', sd), strict=False)
     sd = torch.load(vq_adapter_ckpt, map_location='cpu', weights_only=False)
     model.load_state_dict(sd.get('state_dict', sd), strict=False)
@@ -251,13 +250,15 @@ def print_table(res, ds_name):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--flux_backbone_ckpt',
-        default='/hdd/watermark/model/rosteals_flux/checkpoints/epoch=000012-step=000150000.ckpt')
+        default=os.environ.get('FLUX_BACKBONE_CKPT', '/weights/flux_512/last.ckpt'))
     parser.add_argument('--flux_adapter_ckpt',
-        default='/hdd/watermark/model/flux_small_ae_v2/checkpoints/epoch=000002-step=000035000.ckpt')
+        default=os.environ.get('FLUX_ADAPTER_CKPT', '/weights/flux_adapter/last.ckpt'))
     parser.add_argument('--vq_adapter_ckpt',
-        default='/hdd/watermark/model/small_ae_v2_correct/checkpoints/epoch=000001-step=000035000.ckpt')
-    parser.add_argument('--clic',     default='/hdd/watermark/dataset/clic')
-    parser.add_argument('--metfaces', default='/hdd/watermark/dataset/metfaces')
+        default=os.environ.get('VQ_ADAPTER_CKPT', '/weights/small_ae_v2/last.ckpt'))
+    parser.add_argument('--vq_baseline_ckpt',
+        default=os.environ.get('ROSTEALS_CKPT', '/weights/rosteals/epoch=000017-step=000449999.ckpt'))
+    parser.add_argument('--clic',     default=os.environ.get('CLIC_DIR', '/data/clic'))
+    parser.add_argument('--metfaces', default=os.environ.get('METFACES_DIR', '/data/metfaces'))
     parser.add_argument('--device',   default='cuda:0')
     parser.add_argument('--out',      default='results/eval_flux_adapter.json')
     args = parser.parse_args()
@@ -271,7 +272,7 @@ def main():
 
     print('모델 로드 중...')
     flux_model = load_flux_model(args.flux_backbone_ckpt, args.flux_adapter_ckpt, args.device)
-    vq_model   = load_vq_model(args.vq_adapter_ckpt, args.device)
+    vq_model   = load_vq_model(args.vq_adapter_ckpt, args.device, args.vq_baseline_ckpt)
 
     all_results = {}
     for ds_name, ds_dir in [('CLIC', args.clic), ('MetFaces', args.metfaces)]:

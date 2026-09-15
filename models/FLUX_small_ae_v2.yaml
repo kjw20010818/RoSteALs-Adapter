@@ -16,7 +16,7 @@ model:
     lambda_lpips: 1.0
     attack_prob: 0.9
     finetune_decoder: false
-    pretrain_ckpt: /hdd/watermark/model/rosteals_flux/checkpoints/epoch=000012-step=000150000.ckpt
+    pretrain_ckpt: ${oc.env:FLUX_BACKBONE_CKPT,/weights/flux_512/last.ckpt}
 
     first_stage_config:
       target: cldm.vae_backbones.FluxVAEInterface
@@ -70,14 +70,14 @@ data:
     train:
       target: tools.image_dataset.ImageFolder
       params:
-        data_dir: /hdd/watermark/dataset/images
+        data_dir: ${oc.env:DATA_DIR,/data}
         data_list: prep_data/mir_train_local.csv
         resize: 256
         secret_len: 100
     validation:
       target: tools.image_dataset.ImageFolder
       params:
-        data_dir: /hdd/watermark/dataset/images
+        data_dir: ${oc.env:DATA_DIR,/data}
         data_list: prep_data/mir_val_local.csv
         resize: 256
         secret_len: 100

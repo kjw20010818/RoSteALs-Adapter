@@ -49,13 +49,13 @@ model:
     finetune_decoder: false
 
     # ── Pretrained checkpoint ─────────────────────────────────────────
-    pretrain_ckpt: /workspace/RoSteALS-main/models/RoSteALS/epoch=000017-step=000449999.ckpt
+    pretrain_ckpt: ${oc.env:ROSTEALS_CKPT,/weights/rosteals/epoch=000017-step=000449999.ckpt}
 
     # ── Sub-model configs ─────────────────────────────────────────────
     first_stage_config:
       target: ldm.models.autoencoder.VQModelInterface
       params:
-        ckpt_path: /workspace/RoSteALS-main/models/first_stage_models/vq-f4/model.ckpt
+        ckpt_path: ${oc.env:VQGAN_CKPT,/weights/vq-f4/model.ckpt}
         embed_dim: 3
         n_embed: 8192
         ddconfig:
@@ -118,14 +118,14 @@ data:
     train:
       target: tools.image_dataset.ImageFolder
       params:
-        data_dir: /hdd/watermark/dataset/images
+        data_dir: ${oc.env:DATA_DIR,/data}
         data_list: prep_data/mir_train_local.csv
         resize: 256
         secret_len: 100
     validation:
       target: tools.image_dataset.ImageFolder
       params:
-        data_dir: /hdd/watermark/dataset/images
+        data_dir: ${oc.env:DATA_DIR,/data}
         data_list: prep_data/mir_val_local.csv
         resize: 256
         secret_len: 100

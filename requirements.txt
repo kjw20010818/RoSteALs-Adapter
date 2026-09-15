@@ -1,30 +1,40 @@
+# RoSteALS-Adapter — 현재 실험 환경과 동일한 버전
+# torch / torchvision 은 Dockerfile에서 CUDA wheel로 설치한다.
+
 # Core
-torch>=1.11.0
-torchvision>=0.12.0
-numpy>=1.21.0
-Pillow>=9.0.0
-tqdm>=4.64.0
-omegaconf>=2.1.1
-einops>=0.3.0
+pytorch-lightning==2.4.0
+omegaconf==2.3.1
+einops==0.8.2
+numpy
+pandas
+six
 
-# Image / signal processing
-kornia>=0.6.0
-opencv-python>=4.1.2
-albumentations==0.4.3
-scikit-image>=0.19.0
-scipy>=1.8.0
-imagenet-c>=0.0.2
+# Image / attacks
+Pillow
+kornia==0.8.2
+scipy==1.15.3
+scikit-image
+opencv-python-headless
+Wand
+imagenet-c==0.0.3
+lpips==0.1.4
 
-# Watermarking / ECC
+# HuggingFace (FLUX.1 / Qwen VAE)
+diffusers==0.40.0
+transformers==5.13.0
+accelerate==1.14.0
+huggingface-hub==1.28.0
+safetensors
+
+# VQ-GAN (ldm.models.autoencoder.VQModelInterface)
+taming-transformers-rom1504
+
+# Watermark
 bchlib==0.14.0
 
-# Metrics
-lpips>=0.1.4
-matplotlib>=3.4.0
-
-# Deep learning utilities
-pytorch-lightning>=1.4.0,<1.9.0
-transformers>=4.0.0
-
 # Misc
-requests>=2.25.0
+tqdm
+regex
+filelock
+requests
+PyYAML

@@ -1,0 +1,104 @@
+version: "3.9"
+
+# 사용 전 호스트에서:
+#   export DATA_DIR=/path/to/mirflickr_images
+#   export WEIGHT_DIR=/path/to/checkpoints
+#   export HF_TOKEN=hf_...          # FLUX.1-dev gated 접근용
+#
+# 빌드:
+#   docker compose build
+#
+# 예시:
+#   docker compose run --rm train-flux
+#   docker compose run --rm shell
+
+x-common: &common
+  build: .
+  image: rosteals-adapter:latest
+  environment:
+    - HF_TOKEN=${HF_TOKEN:-}
+    - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
+    - DATA_DIR=/data
+    - PYTHONUNBUFFERED=1
+  volumes:
+    - ${WEIGHT_DIR:-./weights}:/weights
+    - ${DATA_DIR:-./data}:/data
+    - ${HF_CACHE:-${HOME}/.cache/huggingface}:/root/.cache/huggingface
+  stdin_open: true
+  tty: true
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu]
+
+services:
+
+  # FLUX.1 f=8, 512×512, secret_len=64, 단순 Resize (원 논문 KL-f8)
+  train-flux:
+    <<: *common
+    command: >
+      python train.py
+        --config models/FLUX_mir_512.yaml
+        --secret_len 64
+        --max_image_weight_ratio 10
+        --batch_size 2
+        --gpus 2
+        --data_dir /data
+        -o /weights/flux_512
+
+  # VQ-GAN 위 SmallAE-v2 어댑터만 학습 (E/G/F/D frozen)
+  train-adapter:
+    <<: *common
+    command: >
+      python train.py
+        --config models/VQ4_small_ae_v2.yaml
+        --secret_len 100
+        --max_image_weight_ratio 10
+        --batch_size 4
+        --gpus 1
+        --data_dir /data
+        --pretrain_ckpt /weights/rosteals/epoch=000017-step=000449999.ckpt
+        -o /weights/small_ae_v2
+
+  # FLUX 백본 위 SmallAE 어댑터 학습
+  train-flux-adapter:
+    <<: *common
+    command: >
+      python train.py
+        --config models/FLUX_small_ae_v2.yaml
+        --secret_len 100
+        --max_image_weight_ratio 10
+        --batch_size 4
+        --gpus 1
+        --data_dir /data
+        --pretrain_ckpt /weights/flux_512/last.ckpt
+        -o /weights/flux_adapter
+
+  eval-vqgan:
+    <<: *common
+    command: >
+      python scripts/evaluate.py
+        --config models/VQ4_small_ae_v2.yaml
+        --ckpt /weights/small_ae_v2/last.ckpt
+        --clic /data/clic
+        --metfaces /data/metfaces
+        --out /weights/eval_vqgan.json
+
+  eval-flux:
+    <<: *common
+    command: >
+      python scripts/evaluate_flux.py
+        --flux_backbone_ckpt /weights/flux_512/last.ckpt
+        --flux_adapter_ckpt /weights/flux_adapter/last.ckpt
+        --vq_adapter_ckpt /weights/small_ae_v2/last.ckpt
+        --vq_baseline_ckpt /weights/rosteals/epoch=000017-step=000449999.ckpt
+        --clic /data/clic
+        --metfaces /data/metfaces
+        --out /weights/eval_flux.json
+
+  shell:
+    <<: *common
+    command: bash

@@ -87,6 +87,8 @@ def get_parser():
     parser.add_argument('--secret_len', type=int, default=0, help='Length of secret message, 0 means using the default value in config file')
     parser.add_argument('--max_image_weight_ratio', type=float, default=2., help='max weight of image loss after ramping')
     parser.add_argument('--batch_size', type=int, default=8, help='Batch size, 8 for 1 A100 80GB GPU')
+    parser.add_argument('--data_dir', type=str, default='', help='Override YAML data_dir (train/val). Empty = keep YAML.')
+    parser.add_argument('--pretrain_ckpt', type=str, default='', help='Override YAML pretrain_ckpt if present.')
     return parser.parse_args()
 
 def app(args):
@@ -101,6 +103,11 @@ def app(args):
     data_config.params.batch_size = args.batch_size
     data_config.params.train.params.secret_len = secret_len
     data_config.params.validation.params.secret_len = secret_len
+    if args.data_dir:
+        data_config.params.train.params.data_dir = args.data_dir
+        data_config.params.validation.params.data_dir = args.data_dir
+    if args.pretrain_ckpt and 'pretrain_ckpt' in config.model.params:
+        config.model.params.pretrain_ckpt = args.pretrain_ckpt
 
     # resolution = 256
     data = instantiate_from_config(data_config)
